@@ -1,0 +1,42 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.py[cod]
+*.pyo
+
+# Build / packaging
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# C extensions
+*.pyd
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+.cache
+.bench_env
+
+# IDE
+.idea/
+.vscode/
+
+# Generated docs output
+site/
+
+# SonarQube
+.sonar/

@@ -1,0 +1,100 @@
+[project]
+name = "equeue"
+version = "0.1.0"
+description = "An embedded, crash-resilient, persistent queue engine for Python."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Database :: Database Engines/Servers"
+]
+dependencies = [
+    "lmdb>=2.2.0",
+    "msgpack>=1.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "cython>=3.2.5",
+    "mypy>=2.1.0",
+    "pyperf>=2.10.0",
+    "pysonar>=1.6.0.4905",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.14",
+    "setuptools>=82.0.1",
+    "wheel>=0.47.0",
+    "zensical>=0.0.43",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["equeue"]
+package-dir = {"" = "src"}
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "contract: Behaviour contracts from docs/rfc.md",
+    "rfc_sm_01: RFC-SM-01: cannot complete a PENDING job",
+    "rfc_sm_02: RFC-SM-02: cannot nack a PENDING job",
+    "rfc_sm_03: RFC-SM-03: cannot nack a FAILED job",
+    "rfc_rec_01: RFC-REC-01: stale record cannot ack after re-claim",
+    "rfc_rec_02: RFC-REC-02: wrong claim token raises QueueCorrupted",
+    "rfc_id_01: RFC-ID-01: double ack raises QueueCorrupted",
+    "rfc_id_02: RFC-ID-02: ack after vacuum raises QueueCorrupted",
+    "rfc_rt_01: RFC-RT-01: fail after max_retries + 1 nacks",
+    "rfc_rt_02: RFC-RT-02: nack increments retry count",
+    "rfc_ps_01: RFC-PS-01: ack keeps payload on disk",
+    "rfc_ps_02: RFC-PS-02: vacuum removes DONE only",
+    "rfc_ps_03: RFC-PS-03: vacuum updates done counter",
+    "rfc_rc_01: RFC-RC-01: recover clears expired leases",
+    "rfc_rc_02: RFC-RC-02: recover fixes missing lease keys",
+    "rfc_cl_01: RFC-CL-01: missing payload raises QueueCorrupted",
+    "rfc_st_01: RFC-ST-01: stats exposes all keys",
+    "rfc_st_02: RFC-ST-02: counters never negative",
+    "rfc_st_03: RFC-ST-03: lifecycle sum equals total",
+    "rfc_sh_01: RFC-SH-01: close is idempotent",
+    "rfc_sh_02: RFC-SH-02: ops after close raise QueueClosed",
+    "rfc_mp_01: RFC-MP-01: cross-instance put/get works",
+    "rfc_mp_02: RFC-MP-02: concurrent claim delivers each job exactly once",
+    "rfc_mp_03: RFC-MP-03: queued/ index is consistent with state/ after recovery",
+    "rfc_mp_04: RFC-MP-04: recover is idempotent across instances",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = "lmdb.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "msgpack.*"
+
+[tool.sonar]
+exclusions = [
+    "/site",
+    "/docs"
+]
