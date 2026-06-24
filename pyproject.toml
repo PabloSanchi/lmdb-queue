@@ -36,9 +36,11 @@ benchmarks = [
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["equeue"]
-package-dir = {"" = "src"}
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+equeue = ["py.typed"]
 
 [tool.uv]
 package = true
@@ -66,7 +68,7 @@ markers = [
     "rfc_cl_01: RFC-CL-01: missing payload raises QueueCorrupted",
     "rfc_st_01: RFC-ST-01: stats exposes all keys",
     "rfc_st_02: RFC-ST-02: counters never negative",
-    "rfc_st_03: RFC-ST-03: lifecycle sum equals total",
+    "rfc_st_03: RFC-ST-03: lifecycle counts never exceed total",
     "rfc_sh_01: RFC-SH-01: close is idempotent",
     "rfc_sh_02: RFC-SH-02: ops after close raise QueueClosed",
     "rfc_mp_01: RFC-MP-01: cross-instance put/get works",

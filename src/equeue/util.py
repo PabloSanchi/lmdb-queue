@@ -2,33 +2,35 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
 def retry_until_timeout(
-    callback: Callable[[], Any],
+    callback: Callable[[], T | None],
     max_wait: float | None,
-    exception: type[BaseException],
+    exception: type[Exception],
     error_message: str = "",
     poll_interval: float = 0.01,
-) -> Any:
+) -> T:
     """
-    Repeatedly execute a callback until it returns a truthy value or the
+    Repeatedly execute a callback until it returns a non-``None`` value or the
     deadline is reached.
 
     Args:
         callback: Called on each iteration; return value is tested for
-            truthiness.
+            non-``None``.
         max_wait: Maximum seconds to wait. ``None`` means wait indefinitely.
-        exception: Raised when ``max_wait`` expires without a truthy result.
+        exception: Raised when ``max_wait`` expires without a non-``None`` result.
         error_message: Message attached to the raised exception.
         poll_interval: Sleep duration between unsuccessful attempts.
 
     Returns:
-        The first truthy return value from ``callback``.
+        The first non-``None`` return value from ``callback``.
 
     Raises:
-        exception: When the deadline expires without a truthy result.
+        exception: When the deadline expires without a non-``None`` result.
     """
     start_time = time.monotonic()
 

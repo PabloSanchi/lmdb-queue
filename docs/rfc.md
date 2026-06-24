@@ -226,11 +226,11 @@ These invariants enforce:
 | ID | Requirement |
 | --- | --- |
 | **RFC-INV-01** | `stats()["total"]` MUST equal the number of successful `put()` operations since queue creation, including across process restarts. |
-| **RFC-INV-02** | The equation `pending + running + done + failed == total - vacuumed` MUST hold at all times. |
+| **RFC-INV-02** | The inequality `pending + running + done + failed <= total` MUST hold at all times. Equality holds when no DONE jobs have been vacuumed. |
 | **RFC-INV-03** | Upon completion of recovery, no RUNNING job MUST retain an expired or absent lease. |
 | **RFC-INV-04** | A second `ack()` on the same record MUST raise `QueueCorrupted`; duplicate completion MUST NOT be accepted silently. |
 | **RFC-INV-05** | After exactly `max_retries + 1` nack operations, the job MUST enter FAILED state with `retry_count == max_retries + 1`. |
-| **RFC-INV-06** | Upon completion of vacuum, no DONE job MUST retain records under `job/`, `state/`, or `enqueued_at/`. |
+| **RFC-INV-06** | Upon completion of vacuum, no DONE job MUST retain records under `job/` or `state/`. |
 | **RFC-INV-07** | Repeated invocation of `close()` MUST NOT raise an exception. |
 | **RFC-INV-08** | Every state transition to PENDING MUST atomically insert a `queued/<job_id>` entry in the same write transaction. Every transition away from PENDING MUST atomically remove it. The `queued/` index and `state/` MUST never be out of sync. |
 | **RFC-INV-09** | `_recover()` MUST be idempotent: invoking it twice on the same database MUST NOT produce duplicate `queued/` entries, duplicate counter increments, or any other observable side-effect beyond the first invocation. |
@@ -310,7 +310,7 @@ pytest -m contract -v
 | --- | --- | --- | --- |
 | **RFC-ST-01** | `stats()` returns all documented keys. | `test_stats_exposes_all_documented_keys` | `rfc_st_01` |
 | **RFC-ST-02** | No stat counter goes negative. | `test_counters_never_negative` | `rfc_st_02` |
-| **RFC-ST-03** | Lifecycle counts sum to `total`. | `test_lifecycle_sum_matches_total` | `rfc_st_03` |
+| **RFC-ST-03** | Lifecycle counts never exceed `total`. | `test_lifecycle_sum_never_exceeds_total`, `test_lifecycle_invariant_holds_after_vacuum_and_reopen` | `rfc_st_03` |
 
 ### Shutdown (`RFC-SH-*`)
 
@@ -323,10 +323,10 @@ pytest -m contract -v
 
 | ID | Rule | Test | Marker |
 | --- | --- | --- | --- |
-| **RFC-MP-01** | A job enqueued by one `Queue` instance is retrievable by a separate instance opening the same path, after the poll interval elapses or recovery runs. | `test_cross_instance_put_get` | `rfc_mp_01` |
-| **RFC-MP-02** | Concurrent `get()` calls from two instances on the same path claim each job exactly once; no job is delivered to both. | `test_concurrent_claim_delivers_once` | `rfc_mp_02` |
-| **RFC-MP-03** | After any crash-recovery scenario, the `queued/` index MUST be consistent with `state/`: every PENDING job has an entry and no non-PENDING job does. | `test_pending_index_consistent_after_recovery` | `rfc_mp_03` |
-| **RFC-MP-04** | `_recover()` is idempotent: invoking it twice MUST NOT insert duplicate `queued/` entries or double-increment counters. | `test_recover_is_idempotent` | `rfc_mp_04` |
+| **RFC-MP-01** | A job enqueued by one `Queue` instance is retrievable by a separate instance opening the same path, after the poll interval elapses or recovery runs. | `test_cross_instance_put_get_works` | `rfc_mp_01` |
+| **RFC-MP-02** | Concurrent `get()` calls from two instances on the same path claim each job exactly once; no job is delivered to both. | `test_concurrent_claim_delivers_each_job_exactly_once` | `rfc_mp_02` |
+| **RFC-MP-03** | After any crash-recovery scenario, the `queued/` index MUST be consistent with `state/`: every PENDING job has an entry and no non-PENDING job does. | `test_queued_index_is_consistent_with_state_after_recovery` | `rfc_mp_03` |
+| **RFC-MP-04** | `_recover()` is idempotent: invoking it twice MUST NOT insert duplicate `queued/` entries or double-increment counters. | `test_recover_is_idempotent_across_instances` | `rfc_mp_04` |
 
 ---
 
