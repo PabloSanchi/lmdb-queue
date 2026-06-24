@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib as cl
+import os
 import threading
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from functools import partial
 from typing import Any, Generic, TypeVar
 
@@ -14,8 +15,6 @@ from .db import (
     F64,
     JOB_TIMESTAMP_SIZE,
     META_TAIL,
-    PFX_LEASE,
-    PFX_LEASE_OFFSET,
     PFX_QUEUED,
     PFX_QUEUED_OFFSET,
     PFX_STATE,
@@ -25,30 +24,33 @@ from .db import (
     Stats,
     decode,
     encode,
+    iter_prefix,
     key_job,
     key_lease,
     key_retry,
     key_state,
     lease_claim_token,
-    lease_expiry,
+    lease_is_expired_or_missing,
     meta_get,
     meta_set,
     new_lease,
     parse_state_cursor,
+    requeue_running,
+    retry_count,
+    set_done,
+    set_failed,
+    set_pending,
+    set_running,
     stats_get,
     stats_set,
-    txn_set_done,
-    txn_set_failed,
-    txn_set_pending,
-    txn_set_running,
 )
 from .exceptions import QueueClosed, QueueCorrupted, QueueEmpty
 from .record import Record
 from .util import retry_until_timeout
 
-_POLL_MAX_WAIT = 0.05
 _POLL_INTERVAL = 0.01
 _THREAD_JOIN_TIMEOUT = 2.0
+_QUEUE_EMPTY_MSG = "No job became available before the timeout expired"
 
 T = TypeVar("T")
 
@@ -100,7 +102,7 @@ class Queue(Generic[T]):
 
     def __init__(
         self,
-        path: str,
+        path: str | os.PathLike[str],
         *,
         lease_time: float = 30.0,
         max_retries: int = 3,
@@ -111,14 +113,22 @@ class Queue(Generic[T]):
         do_vacuum: bool = True,
         vacuum_interval: float = 300.0,
     ):
-        self.path = path
+        self._validate_config(
+            lease_time=lease_time,
+            max_retries=max_retries,
+            map_size=map_size,
+            recover_interval=recover_interval,
+            vacuum_interval=vacuum_interval,
+        )
+
+        self.path = os.fspath(path)
         self._lease_time = lease_time
         self._max_retries = max_retries
         self._recover_interval = recover_interval
         self._vacuum_interval = vacuum_interval
 
         self._env = lmdb.open(
-            path,
+            self.path,
             map_size=map_size,
             max_dbs=0,
             writemap=True,
@@ -130,22 +140,20 @@ class Queue(Generic[T]):
         )
 
         self._stop_event = threading.Event()
+        self._env_closed = False
 
         self._recover()
 
-        self._vacuum_thread = None
-        if do_vacuum:
-            self._vacuum_thread = threading.Thread(
-                target=self._vacuum_loop, name="queue-vacuum", daemon=True
-            )
-            self._vacuum_thread.start()
-
-        self._requeue_thread = None
-        if do_recover:
-            self._requeue_thread = threading.Thread(
-                target=self._requeue_loop, name="queue-recover", daemon=True
-            )
-            self._requeue_thread.start()
+        self._vacuum_thread = (
+            self._start_background_thread(target=self._vacuum_loop, name="queue-vacuum")
+            if do_vacuum
+            else None
+        )
+        self._requeue_thread = (
+            self._start_background_thread(target=self._requeue_loop, name="queue-recover")
+            if do_recover
+            else None
+        )
 
     @property
     def _closed(self) -> bool:
@@ -195,7 +203,7 @@ class Queue(Generic[T]):
             if deadline is not None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise QueueEmpty("No job became available before the timeout expired")
+                    raise QueueEmpty(_QUEUE_EMPTY_MSG)
             else:
                 remaining = None
 
@@ -203,6 +211,10 @@ class Queue(Generic[T]):
             record = self._claim(job_id)
             if record is not None:
                 return record
+
+            # Lost the claim race to another worker. Yield briefly instead of
+            # hot-spinning the read/claim loop while jobs remain in queued/.
+            self._stop_event.wait(_POLL_INTERVAL)
 
     @cl.contextmanager
     def processing(self, timeout: float | None = None) -> Iterator[Record[T]]:
@@ -247,8 +259,6 @@ class Queue(Generic[T]):
             - done: Jobs completed successfully (not yet vacuumed).
             - failed: Jobs that exceeded the retry limit.
             - total: Total jobs ever added; never decreases, survives restarts.
-            - recovered: Jobs moved back to PENDING by the recovery thread.
-            - vacuumed: DONE jobs removed from disk by the vacuum thread.
         """
         self._assert_open()
         with self._env.begin(write=False) as txn:
@@ -258,21 +268,26 @@ class Queue(Generic[T]):
         """
         Stop background threads and close the queue.
 
-        This method is idempotent and may be called multiple times.
+        This method is idempotent and may be called multiple times. If a
+        background thread fails to stop in time, the LMDB environment is left
+        open (rather than closed underneath a live thread, which could crash
+        the process) and a ``RuntimeError`` is raised; a later ``close()`` call
+        retries the shutdown.
         """
-        if self._closed:
-            return
-
         self._stop_event.set()
 
-        if self._vacuum_thread is not None:
-            self._vacuum_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
+        if self._env_closed:
+            return
 
-        if self._requeue_thread is not None:
-            self._requeue_thread.join(timeout=_THREAD_JOIN_TIMEOUT)
+        for thread in (self._vacuum_thread, self._requeue_thread):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=_THREAD_JOIN_TIMEOUT)
+                if thread.is_alive():
+                    raise RuntimeError(f"{thread.name} did not stop within {_THREAD_JOIN_TIMEOUT}s")
 
         self._env.sync(True)
         self._env.close()
+        self._env_closed = True
 
     def _put(self, payload: bytes) -> int:
         """
@@ -287,7 +302,7 @@ class Queue(Generic[T]):
         with self._env.begin(write=True) as txn:
             job_id = meta_get(txn, META_TAIL)
             txn.put(key_job(job_id), F64.pack(time.time()) + payload)
-            txn_set_pending(txn, job_id)
+            set_pending(txn, job_id)
             meta_set(txn, META_TAIL, job_id + 1)
 
             stats = stats_get(txn)
@@ -313,13 +328,15 @@ class Queue(Generic[T]):
                 raise QueueCorrupted(f"job {job_id} is PENDING but payload is missing")
 
             enqueued_at = F64.unpack(payload_raw[:JOB_TIMESTAMP_SIZE])[0]
-            payload = decode(payload_raw[JOB_TIMESTAMP_SIZE:])
+            try:
+                payload = decode(payload_raw[JOB_TIMESTAMP_SIZE:])
+            except Exception as exc:
+                raise QueueCorrupted(f"job {job_id} payload could not be decoded") from exc
 
-            retries_raw = txn.get(key_retry(job_id))
-            retries = U32.unpack(retries_raw)[0] if retries_raw else 0
+            retries = retry_count(txn, job_id)
 
             packed_lease, claim_token = new_lease(self._lease_time)
-            txn_set_running(txn, job_id, packed_lease)
+            set_running(txn, job_id, packed_lease)
 
             stats = stats_get(txn)
             stats.running += 1
@@ -355,29 +372,27 @@ class Queue(Generic[T]):
             stats.running -= 1
 
             if not requeue:
-                txn_set_done(txn, job_id)
+                set_done(txn, job_id)
                 stats.done += 1
             else:
-                retries_raw = txn.get(key_retry(job_id))
-                retries = U32.unpack(retries_raw)[0] if retries_raw else 0
-                retries_next = retries + 1
+                retries_next = retry_count(txn, job_id) + 1
                 txn.put(key_retry(job_id), U32.pack(retries_next))
 
                 if retries_next > self._max_retries:
-                    txn_set_failed(txn, job_id)
+                    set_failed(txn, job_id)
                     stats.failed += 1
                 else:
-                    txn_set_pending(txn, job_id)
+                    set_pending(txn, job_id)
                     stats.pending += 1
 
             stats_set(txn, stats)
 
-    def _poll_job(self, max_wait: float | None = _POLL_MAX_WAIT) -> int:
+    def _poll_job(self, max_wait: float | None) -> int:
         return retry_until_timeout(
             self._peek_job,
             max_wait=max_wait,
             exception=QueueEmpty,
-            error_message="Queue is empty",
+            error_message=_QUEUE_EMPTY_MSG,
             poll_interval=_POLL_INTERVAL,
         )
 
@@ -411,52 +426,43 @@ class Queue(Generic[T]):
         """
         now = time.time()
         stats = Stats()
+        requeued = 0
 
         with self._env.begin(write=True) as txn:
             stats.total = meta_get(txn, META_TAIL)
-            cursor = txn.cursor()
-            terminate = False
 
-            if cursor.set_range(PFX_STATE):
-                while not terminate and cursor.key().startswith(PFX_STATE):
-                    job_id, state = parse_state_cursor(cursor)
+            for cursor in iter_prefix(txn.cursor(), PFX_STATE):
+                job_id, state = parse_state_cursor(cursor)
 
-                    match state:
-                        case JobState.DONE:
-                            stats.done += 1
-                        case JobState.FAILED:
-                            stats.failed += 1
-                        case JobState.PENDING:
+                match state:
+                    case JobState.DONE:
+                        stats.done += 1
+                    case JobState.FAILED:
+                        stats.failed += 1
+                    case JobState.PENDING:
+                        stats.pending += 1
+                    case JobState.RUNNING:
+                        if lease_is_expired_or_missing(txn, job_id, now):
+                            requeue_running(txn, job_id)
                             stats.pending += 1
-                        case JobState.RUNNING:
-                            raw_lease = txn.get(key_lease(job_id))
-                            if raw_lease is None or now > lease_expiry(raw_lease):
-                                txn_set_pending(txn, job_id)
-                                txn.delete(key_lease(job_id))
-                                stats.pending += 1
-                                stats.recovered += 1
-                            else:
-                                stats.running += 1
-
-                    terminate = not cursor.next()
+                            requeued += 1
+                        else:
+                            stats.running += 1
+                    case _:
+                        raise QueueCorrupted(f"job {job_id} has unknown state {state!r}")
 
             stats_set(txn, stats)
 
-        return stats.recovered
+        return requeued
 
     def _requeue_loop(self) -> None:
-        while not self._stop_event.wait(timeout=self._recover_interval):
-            self._requeue_expired()
+        self._run_periodic(interval=self._recover_interval, action=self._requeue_expired)
 
     def _requeue_expired(self) -> int:
         """
         Move expired or orphaned RUNNING jobs back to PENDING.
 
-        Performs two passes inside one write transaction:
-        1. Scans ``lease/`` keys and requeues any job whose lease timestamp has passed.
-        2. Scans ``state/`` keys and requeues any RUNNING job that has no lease record at all.
-
-        Both passes are needed so that orphaned jobs are not stuck until the next restart.
+        Scans ``state/`` for RUNNING jobs whose lease is expired or missing.
 
         Returns:
             The number of jobs moved back to PENDING.
@@ -468,40 +474,22 @@ class Queue(Generic[T]):
         requeued = 0
 
         with self._env.begin(write=True) as txn:
-            terminate = False
-            cursor = txn.cursor()
-            if cursor.set_range(PFX_LEASE):
-                while not terminate and cursor.key().startswith(PFX_LEASE):
-                    if now > lease_expiry(cursor.value()):
-                        job_id = U64.unpack_from(cursor.key(), offset=PFX_LEASE_OFFSET)[0]
-                        txn_set_pending(txn, job_id)
-                        requeued += 1
-                        terminate = cursor.delete()
-                    else:
-                        terminate = not cursor.next()
-
-            terminate = False
-            cursor = txn.cursor()
-            if cursor.set_range(PFX_STATE):
-                while not terminate and cursor.key().startswith(PFX_STATE):
-                    job_id, state = parse_state_cursor(cursor)
-                    if state == JobState.RUNNING and txn.get(key_lease(job_id)) is None:
-                        txn_set_pending(txn, job_id)
-                        requeued += 1
-                    terminate = not cursor.next()
+            for cursor in iter_prefix(txn.cursor(), PFX_STATE):
+                job_id, state = parse_state_cursor(cursor)
+                if state == JobState.RUNNING and lease_is_expired_or_missing(txn, job_id, now):
+                    requeue_running(txn, job_id)
+                    requeued += 1
 
             if requeued:
                 stats = stats_get(txn)
                 stats.running -= requeued
                 stats.pending += requeued
-                stats.recovered += requeued
                 stats_set(txn, stats)
 
         return requeued
 
     def _vacuum_loop(self) -> None:
-        while not self._stop_event.wait(timeout=self._vacuum_interval):
-            self._vacuum()
+        self._run_periodic(interval=self._vacuum_interval, action=self._vacuum)
 
     def _vacuum(self) -> int:
         """
@@ -520,25 +508,22 @@ class Queue(Generic[T]):
         removed = 0
 
         with self._env.begin(write=True) as txn:
-            cursor = txn.cursor()
-            terminate = False
-            if cursor.set_range(PFX_STATE):
-                while not terminate and cursor.key().startswith(PFX_STATE):
-                    job_id, state = parse_state_cursor(cursor)
+            done_ids: list[int] = []
+            for cursor in iter_prefix(txn.cursor(), PFX_STATE):
+                job_id, state = parse_state_cursor(cursor)
+                if state == JobState.DONE:
+                    done_ids.append(job_id)
 
-                    if state == JobState.DONE:
-                        txn.delete(key_job(job_id))
-                        txn.delete(key_retry(job_id))
-                        txn.delete(key_lease(job_id))
-                        removed += 1
-                        terminate = not cursor.delete()
-                    else:
-                        terminate = not cursor.next()
+            for job_id in done_ids:
+                txn.delete(key_job(job_id))
+                txn.delete(key_state(job_id))
+                txn.delete(key_retry(job_id))
+                txn.delete(key_lease(job_id))
+                removed += 1
 
             if removed:
                 stats = stats_get(txn)
                 stats.done -= removed
-                stats.vacuumed += removed
                 stats_set(txn, stats)
 
         return removed
@@ -546,6 +531,40 @@ class Queue(Generic[T]):
     def _assert_open(self) -> None:
         if self._closed:
             raise QueueClosed()
+
+    @staticmethod
+    def _validate_config(
+        *,
+        lease_time: float,
+        max_retries: int,
+        map_size: int,
+        recover_interval: float,
+        vacuum_interval: float,
+    ) -> None:
+        if lease_time <= 0:
+            raise ValueError("lease_time must be > 0")
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        if map_size <= 0:
+            raise ValueError("map_size must be > 0")
+        if recover_interval <= 0:
+            raise ValueError("recover_interval must be > 0")
+        if vacuum_interval <= 0:
+            raise ValueError("vacuum_interval must be > 0")
+
+    def _start_background_thread(
+        self,
+        *,
+        target: Callable[[], None],
+        name: str,
+    ) -> threading.Thread:
+        thread = threading.Thread(target=target, name=name, daemon=True)
+        thread.start()
+        return thread
+
+    def _run_periodic(self, *, interval: float, action: Callable[[], object]) -> None:
+        while not self._stop_event.wait(timeout=interval):
+            action()
 
     def __enter__(self) -> Queue[T]:
         return self
@@ -562,10 +581,32 @@ class AsyncQueue(Generic[T]):
     do not block the event loop.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._q = Queue(*args, **kwargs)
+    def __init__(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        lease_time: float = 30.0,
+        max_retries: int = 3,
+        map_size: int = 2**30,
+        sync: bool = False,
+        do_recover: bool = True,
+        recover_interval: float = 15.0,
+        do_vacuum: bool = True,
+        vacuum_interval: float = 300.0,
+    ) -> None:
+        self._q: Queue[T] = Queue(
+            path,
+            lease_time=lease_time,
+            max_retries=max_retries,
+            map_size=map_size,
+            sync=sync,
+            do_recover=do_recover,
+            recover_interval=recover_interval,
+            do_vacuum=do_vacuum,
+            vacuum_interval=vacuum_interval,
+        )
 
-    async def put(self, item: Any) -> int:
+    async def put(self, item: T) -> int:
         """
         Add an item to the queue.
 
@@ -591,7 +632,7 @@ class AsyncQueue(Generic[T]):
             QueueEmpty: No job became available before the timeout expired.
             QueueClosed: The queue is closed.
         """
-        return await asyncio.to_thread(self._q.get, timeout)
+        return await asyncio.to_thread(self._q.get, timeout=timeout)
 
     @cl.asynccontextmanager
     async def processing(self, timeout: float | None = None) -> AsyncIterator[Record[T]]:
@@ -622,8 +663,6 @@ class AsyncQueue(Generic[T]):
             - done: Jobs completed successfully (not yet vacuumed).
             - failed: Jobs that exceeded the retry limit.
             - total: Total jobs ever added; never decreases.
-            - recovered: Jobs moved back to PENDING by the recovery thread.
-            - vacuumed: DONE jobs removed from disk by the vacuum thread.
         """
         return await asyncio.to_thread(self._q.stats)
 
@@ -638,5 +677,5 @@ class AsyncQueue(Generic[T]):
     async def __aenter__(self) -> AsyncQueue[T]:
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
-        await asyncio.to_thread(self._q.close)
+    async def __aexit__(self, *_: Any) -> None:
+        await self.close()

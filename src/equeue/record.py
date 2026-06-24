@@ -28,7 +28,7 @@ class Record(Generic[T]):
     payload: T
     retries: int
     enqueued_at: float
-    _finish: Callable[[bool], None] = field(repr=False, compare=False)
+    _finish: Callable[..., None] = field(repr=False, compare=False)
 
     def ack(self) -> None:
         """
