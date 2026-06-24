@@ -101,8 +101,6 @@ q.stats()
 #     "done":    120,   # finished successfully
 #     "failed":    2,   # exceeded retry limit
 #     "total":   127,   # ever enqueued; never decreases
-#     "recovered": 3,   # moved back to PENDING by recovery thread
-#     "vacuumed":  0,   # DONE jobs removed from disk
 # }
 ```
 

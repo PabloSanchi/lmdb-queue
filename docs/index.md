@@ -93,7 +93,7 @@ q = Queue(
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `lease_time` | `30.0` | How long a worker may hold a job before recovery can re-queue it |
-| `max_retries` | `3` | Nacks allowed before the job is marked FAILED |
+| `max_retries` | `3` | Nacks before FAILED (`max_retries + 1` total nack attempts) |
 | `map_size` | `1 GiB` | LMDB address space (not the same as disk used) |
 | `sync` | `False` | If `True`, every write waits for disk sync (slower, safer) |
 | `do_recover` | `True` | Turn on the lease recovery thread |
@@ -129,8 +129,6 @@ q.stats()
 #     "done":    120,
 #     "failed":    2,
 #     "total":   127,
-#     "recovered": 3,
-#     "vacuumed":  0,
 # }
 ```
 
@@ -141,8 +139,6 @@ q.stats()
 | `done` | Jobs finished successfully (not yet vacuumed) |
 | `failed` | Jobs that reached the retry limit |
 | `total` | All jobs ever added; never decreases, survives restarts |
-| `recovered` | Jobs moved back to PENDING by the recovery thread |
-| `vacuumed` | DONE jobs removed from disk by the vacuum thread |
 
 All counters are stored on disk. Reading `stats()` never scans the database; it is always fast.
 
@@ -179,7 +175,7 @@ Or manually: `q.close()`. Safe to call more than once.
     A job may run **more than once**. If a worker crashes or its lease expires before `ack()`, another worker may get the same job. Design handlers so running twice is safe (idempotent).
 
 !!! warning "Multi-process polling"
-    Multiple processes can open the same queue path safely. However, processes that are in separate machines cannot share the queue. Cross-process workers poll LMDB at `poll_interval` (default 50 ms). For sub-millisecond wake-up, use threads inside one process.
+    Multiple processes can open the same queue path safely. However, processes that are in separate machines cannot share the queue. Cross-process workers poll LMDB at `poll_interval` (default 10 ms).
 
 !!! warning "Durability vs speed"
     With `sync=False` (default), a power loss right after a write may lose the last jobs. Use `sync=True` when you need stronger durability and can accept lower throughput.
