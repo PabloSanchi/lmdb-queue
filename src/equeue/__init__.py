@@ -4,7 +4,7 @@ from equeue.exceptions import EQueueError, QueueClosed, QueueCorrupted, QueueEmp
 from equeue.queue import AsyncQueue, Queue
 from equeue.record import Record
 
-__version__ = version("equeue")
+__version__ = version("lmdb-queue")
 
 __all__ = [
     "__version__",
