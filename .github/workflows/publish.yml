@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/equeue/
+      url: https://pypi.org/project/lmdb-queue/
     permissions:
       contents: write
       id-token: write
