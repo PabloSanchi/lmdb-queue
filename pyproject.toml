@@ -1,6 +1,6 @@
 [project]
 name = "equeue"
-version = "0.1.0"
+dynamic = ["version"]
 description = "An embedded, crash-resilient, persistent queue engine for Python."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,7 @@ benchmarks = [
 ]
 
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=64", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -41,6 +41,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 equeue = ["py.typed"]
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "no-local-version"
 
 [tool.uv]
 package = true
