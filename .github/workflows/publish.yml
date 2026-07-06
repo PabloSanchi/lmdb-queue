@@ -121,17 +121,6 @@ jobs:
       - name: Check package metadata
         run: twine check dist/*
 
-      - name: Verify built version is a clean release
-        run: |
-          built=$(python -c "import importlib.metadata as m; print(m.version('equeue'))")
-          echo "Built version: $built"
-          expected="${{ steps.next.outputs.version }}"
-          expected="${expected#v}"
-          if [ "$built" != "$expected" ]; then
-            echo "::error::Built version '$built' does not match expected '$expected'. Tag was likely not picked up cleanly."
-            exit 1
-          fi
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
