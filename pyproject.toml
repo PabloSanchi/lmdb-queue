@@ -1,5 +1,5 @@
 [project]
-name = "equeue"
+name = "lmdb-queue"
 dynamic = ["version"]
 description = "An embedded, crash-resilient, persistent queue engine for Python."
 readme = "README.md"
