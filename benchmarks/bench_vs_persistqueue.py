@@ -82,6 +82,7 @@ def _pq_round_trip(*, synchronous: str) -> Iterator[Callable[[], object]]:
 
         yield op
 
+
 REGIMES = {
     "durable (fsync)": (True, "FULL"),
     "fast (no fsync)": (False, "OFF"),
