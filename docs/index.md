@@ -1,6 +1,6 @@
 # User Guide
 
-EQueue is a **persistent job queue** for Python. Jobs survive restarts. Workers run in threads or separate processes on the same machine. No external broker required.
+lmdb-queue is a **persistent job queue** for Python. Jobs survive restarts. Workers run in threads or separate processes on the same machine. No external broker required.
 
 For full behaviour rules and test contracts, see the [RFC](rfc.md).
 
@@ -9,11 +9,11 @@ For full behaviour rules and test contracts, see the [RFC](rfc.md).
 ## Installation
 
 ```bash
-pip install equeue
+pip install lmdb-queue
 ```
 
 ```bash
-uv add equeue
+uv add lmdb-queue
 ```
 
 ---
