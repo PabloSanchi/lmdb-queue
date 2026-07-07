@@ -1,4 +1,4 @@
-# EQueue
+# LMDB-QUEUE
 
 
 [![Build](https://github.com/PabloSanchi/equeue/actions/workflows/build.yml/badge.svg)](https://github.com/PabloSanchi/equeue/actions/workflows/build.yml)
@@ -15,7 +15,14 @@ Jobs survive process restarts. Workers run as threads or separate processes on t
 
 ## Install
 
-Not published yet.
+```bash
+pip install lmdb-queue
+```
+
+```bash
+uv add lmdb-queue
+```
+
 
 ---
 
