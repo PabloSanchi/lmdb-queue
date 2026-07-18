@@ -467,6 +467,54 @@ dev = [
 ]
 
 [[package]]
+name = "lmdb-queue"
+source = { editable = "." }
+dependencies = [
+    { name = "lmdb" },
+    { name = "msgpack" },
+]
+
+[package.dev-dependencies]
+benchmarks = [
+    { name = "persist-queue" },
+    { name = "pyperf" },
+]
+dev = [
+    { name = "cython" },
+    { name = "mypy" },
+    { name = "pysonar" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+    { name = "setuptools" },
+    { name = "wheel" },
+    { name = "zensical" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "lmdb", specifier = ">=2.2.1" },
+    { name = "msgpack", specifier = ">=1.2.1" },
+]
+
+[package.metadata.requires-dev]
+benchmarks = [
+    { name = "persist-queue", specifier = ">=1.1.0" },
+    { name = "pyperf", specifier = ">=2.10.0" },
+]
+dev = [
+    { name = "cython", specifier = ">=3.2.8" },
+    { name = "mypy", specifier = ">=2.1.0" },
+    { name = "pysonar", specifier = ">=1.6.0.4905" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "ruff", specifier = ">=0.15.20" },
+    { name = "setuptools", specifier = ">=82.0.1" },
+    { name = "wheel", specifier = ">=0.47.0" },
+    { name = "zensical", specifier = ">=0.0.46" },
+]
+
+[[package]]
 name = "markdown"
 version = "3.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -802,16 +850,16 @@ wheels = [
 
 [[package]]
 name = "pysonar"
-version = "1.6.0.4905"
+version = "1.7.0.5143"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jproperties" },
     { name = "requests" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/d3/703d68d38f1ed56fb44ede9f02ad8d6e1053b420e4120c5622781f0cfcc8/pysonar-1.6.0.4905.tar.gz", hash = "sha256:42fca07135c2a3c285a9ac3621f604fa84a1ea8a62a409cd601db68b02cedd90", size = 30919, upload-time = "2026-05-28T13:11:44.661Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/1f/854da1093b491a42ecdc7138504ffcaef23da61efc586ae572553b76dbe2/pysonar-1.7.0.5143.tar.gz", hash = "sha256:60222644179e3127efa205ecfb20911bf96bbeaa6f443df20da528f809dba01c", size = 30924, upload-time = "2026-07-08T08:27:13.064Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/ce/46c7746cfc1a141f1df534ae5d9cc6111c6f4f84a2135b4d4928a9687034/pysonar-1.6.0.4905-py3-none-any.whl", hash = "sha256:1a83a2dc3c11500cc07206277bc60aa97004eefbc6873d29ac523377f06e3e57", size = 46060, upload-time = "2026-05-28T13:11:43.726Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/9e/16b4c5a07acfcb018ca004245b3e6971016c877299b08fdfd24deb20957e/pysonar-1.7.0.5143-py3-none-any.whl", hash = "sha256:79710c3616d19a38719a8d0a0472df9281357e81842611b557b7aecfd1842786", size = 46060, upload-time = "2026-07-08T08:27:12.102Z" },
 ]
 
 [[package]]
