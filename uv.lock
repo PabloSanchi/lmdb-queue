@@ -225,7 +225,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -784,16 +784,16 @@ wheels = [
 
 [[package]]
 name = "pysonar"
-version = "1.7.0.5143"
+version = "1.8.0.5390"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jproperties" },
     { name = "requests" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/1f/854da1093b491a42ecdc7138504ffcaef23da61efc586ae572553b76dbe2/pysonar-1.7.0.5143.tar.gz", hash = "sha256:60222644179e3127efa205ecfb20911bf96bbeaa6f443df20da528f809dba01c", size = 30924, upload-time = "2026-07-08T08:27:13.064Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/dd/54790b66fba48693e76b3f70d566e0f31692a72c97910535dad0ee4098d9/pysonar-1.8.0.5390.tar.gz", hash = "sha256:bf0682906f17debf2dd43cb343882ae0826e5a5d698d24e5dc3900ee96991387", size = 31207, upload-time = "2026-08-25T08:00:59.762Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/9e/16b4c5a07acfcb018ca004245b3e6971016c877299b08fdfd24deb20957e/pysonar-1.7.0.5143-py3-none-any.whl", hash = "sha256:79710c3616d19a38719a8d0a0472df9281357e81842611b557b7aecfd1842786", size = 46060, upload-time = "2026-07-08T08:27:12.102Z" },
+    { url = "https://files.pythonhosted.org/packages/46/56/046f87d47ea901aab9ee4d2fb06f037d17b4dc5f2139a0dbdf7b4bb7d422/pysonar-1.8.0.5390-py3-none-any.whl", hash = "sha256:f4857bb2dea6ecec66a5a0699d23e58f2a2a4fe2829bf4764662ac39bd7e1c8c", size = 46374, upload-time = "2026-08-25T08:00:58.707Z" },
 ]
 
 [[package]]
